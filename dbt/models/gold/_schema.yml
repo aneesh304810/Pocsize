@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: nav_by_account_daily
+    description: "Account NAV rolled up daily. Primary gold fact for downstream consumers."
+    columns:
+      - name: as_of_date
+        tests: [not_null]
+      - name: account_id
+        tests: [not_null]
+      - name: nav_base
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [as_of_date, account_id]
+
+  - name: exposure_by_asset_class
+    description: "Firm-level exposure by asset class, rolled up daily."
+    columns:
+      - name: as_of_date
+        tests: [not_null]
+      - name: asset_class
+        tests: [not_null]
+      - name: total_exposure_base
+        tests: [not_null]

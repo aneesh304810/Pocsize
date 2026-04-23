@@ -1,0 +1,20 @@
+# Core pinned to what the ODH workbench image + Nexus proxy already provide.
+# Don't bump without checking Nexus quarantine status — undici-style incidents
+# have bitten us before.
+
+apache-airflow==2.10.2
+astronomer-cosmos==1.7.0
+dbt-core==1.8.7
+dbt-oracle==1.8.2
+
+oracledb==2.4.1
+numpy==1.26.4
+pandas==2.2.2
+
+openpyxl==3.1.5
+# pyarrow is optional — the generator falls back to csv.gz if unavailable,
+# which matches the air-gapped Nexus-only reality anyway.
+# pyarrow==17.0.0
+
+# Dev only
+pytest==8.3.3

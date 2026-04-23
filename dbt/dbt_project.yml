@@ -1,0 +1,65 @@
+name: 'swp_sizing_poc'
+version: '1.0.0'
+config-version: 2
+
+# This dbt project intentionally mirrors the production SWP migration layout:
+#   bronze  = raw landed data (view-style / incremental)
+#   silver  = cleaned + conformed (incremental, merge strategy)
+#   gold    = aggregated marts (table, often with parallel DML)
+#
+# Sizing-POC purpose: exercise each layer at 2M rows, capture Oracle
+# PGA/SGA + Airflow worker CPU/mem so we can publish a sizing table to the
+# CTO for the OpenShift cluster request.
+
+profile: 'swp_sizing_poc'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Model layer config. Incremental + merge is the workhorse pattern for
+# Oracle; `on_schema_change: append_new_columns` mirrors the SWP standard.
+models:
+  swp_sizing_poc:
+    bronze:
+      +materialized: view
+      +schema: bronze
+    silver:
+      +materialized: incremental
+      +incremental_strategy: merge
+      +on_schema_change: append_new_columns
+      +schema: silver
+      +post-hook: "{{ log_model_stats() }}"
+    gold:
+      +materialized: table
+      +schema: gold
+      # Parallel DML hint injected via macro for 2M-row aggregations
+      +pre-hook:
+        - "{{ oracle_parallel_dml_on(degree=4) }}"
+      +post-hook:
+        - "{{ oracle_parallel_dml_off() }}"
+        - "{{ log_model_stats() }}"
+
+# Ensure the stats table exists before any model runs
+on-run-start:
+  - "{{ create_metrics_table_if_not_exists() }}"
+
+# Seeds (smaller reference data) get loaded with explicit column types so
+# Oracle doesn't default to VARCHAR2(4000)
+seeds:
+  swp_sizing_poc:
+    +schema: bronze
+    +quote_columns: false
+
+vars:
+  # Flip this to true to run a 200K-row smoke test instead of full 2M
+  smoke_test: false
+  smoke_test_limit: 200000

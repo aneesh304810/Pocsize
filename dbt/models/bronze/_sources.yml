@@ -1,0 +1,47 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('ORACLE_USER') }}"
+    schema:   bronze
+    description: >
+      Landing zone for the SWP sizing POC. In production these come from
+      the Advantage/STAR CDC feeds; here they're loaded from the 2M-row
+      sample CSV.gz via Oracle external tables (see k8s/oracle_external_tables.sql).
+    tables:
+      - name: positions_raw
+        description: "Raw position records, 2M rows, one per account x security x as_of_date"
+        columns:
+          - name: position_hash
+            description: "Business key: as_of_date|account_id|security_id"
+            tests:
+              - unique
+              - not_null
+          - name: as_of_date
+            tests: [not_null]
+          - name: account_id
+            tests: [not_null]
+          - name: security_id
+            tests: [not_null]
+          - name: market_value
+            tests: [not_null]
+          - name: settlement_status
+            tests:
+              - accepted_values:
+                  values: ['SETTLED', 'PENDING', 'FAILED']
+
+      - name: securities
+        description: "Security master reference data, 50K rows"
+        columns:
+          - name: security_id
+            tests: [unique, not_null]
+          - name: asset_class
+            tests:
+              - accepted_values:
+                  values: ['EQUITY', 'FIXED_INCOME', 'CASH', 'ALTERNATIVE', 'DERIVATIVE']
+
+      - name: accounts
+        description: "Client account reference data, 10K rows"
+        columns:
+          - name: account_id
+            tests: [unique, not_null]

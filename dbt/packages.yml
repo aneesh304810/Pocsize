@@ -1,0 +1,5 @@
+# In the BBH air-gapped env, these resolve through the internal Nexus
+# Git proxy; public URLs are shown here for reference only.
+packages:
+  - package: dbt-labs/dbt_utils
+    version: [">=1.1.0", "<2.0.0"]

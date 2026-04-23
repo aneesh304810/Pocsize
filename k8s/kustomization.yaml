@@ -1,0 +1,25 @@
+# Pod-size overlays used by the sizing sweep DAG.
+#
+# Apply one at a time:
+#   kustomize build k8s/overlays/small  | oc apply -f -
+#   kustomize build k8s/overlays/medium | oc apply -f -
+#   kustomize build k8s/overlays/large  | oc apply -f -
+#   kustomize build k8s/overlays/xlarge | oc apply -f -
+#
+# Actual overlay directories would live under k8s/overlays/<size>/ each
+# with a kustomization.yaml that patches the base Pod resources block.
+#
+# Sizing table (requests / limits):
+#
+#   small   500m /  1Gi  —  1c /  2Gi
+#   medium    1c /  2Gi  —  2c /  4Gi
+#   large     2c /  4Gi  —  4c /  8Gi
+#   xlarge    4c /  8Gi  —  8c / 16Gi
+#
+# The 2x burst limit is intentional — matches the sizing_report
+# Recommendations sheet guidance ("burst 2x allowed; request at steady-
+# state P50"). Also aligns with the OpenShift cluster's default QoS
+# classification rules so we stay in Burstable (not Guaranteed).
+
+resources:
+  - base.yaml

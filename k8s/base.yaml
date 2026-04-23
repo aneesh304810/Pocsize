@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: swp-sizing-poc
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: swp-poc-worker
+  namespace: swp-sizing-poc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sample-data-pvc
+  namespace: swp-sizing-poc
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ocs-storagecluster-cephfs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sizing-reports-pvc
+  namespace: swp-sizing-poc
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: ocs-storagecluster-cephfs
+---
+# Base pod template — overlays swap in CPU/memory via patches
+apiVersion: v1
+kind: Pod
+metadata:
+  name: swp-poc-worker
+  namespace: swp-sizing-poc
+  labels:
+    app: swp-sizing-poc
+spec:
+  serviceAccountName: swp-poc-worker
+  restartPolicy: Never
+  containers:
+    - name: worker
+      image: nexus.bbhgroup.net/swp-airflow-worker:latest
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: ORACLE_HOST
+          valueFrom: { secretKeyRef: { name: oracle-swp, key: host    } }
+        - name: ORACLE_PORT
+          valueFrom: { secretKeyRef: { name: oracle-swp, key: port    } }
+        - name: ORACLE_SERVICE
+          valueFrom: { secretKeyRef: { name: oracle-swp, key: service } }
+        - name: ORACLE_USER
+          valueFrom: { secretKeyRef: { name: oracle-swp, key: user    } }
+        - name: ORACLE_PASSWORD
+          valueFrom: { secretKeyRef: { name: oracle-swp, key: password} }
+      resources:                   # overridden per-overlay
+        requests: { cpu: "1",  memory: "2Gi" }
+        limits:   { cpu: "2",  memory: "4Gi" }
+      volumeMounts:
+        - { name: sample-data,    mountPath: /mnt/sample_data    }
+        - { name: sizing-reports, mountPath: /mnt/sizing_reports }
+  volumes:
+    - name: sample-data
+      persistentVolumeClaim: { claimName: sample-data-pvc }
+    - name: sizing-reports
+      persistentVolumeClaim: { claimName: sizing-reports-pvc }

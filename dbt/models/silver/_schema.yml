@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: positions_enriched
+    description: >
+      Silver layer: positions joined to securities and accounts with FX
+      conversion to base currency. This is the main sizing workload for the
+      POC — the 2M x 50K x 10K join and MERGE exercises PGA for hash builds
+      and UNDO/redo for the write.
+    columns:
+      - name: position_hash
+        tests:
+          - unique
+          - not_null
+      - name: market_value_base
+        tests: [not_null]
+      - name: asset_class
+        tests:
+          - accepted_values:
+              values: ['EQUITY', 'FIXED_INCOME', 'CASH', 'ALTERNATIVE', 'DERIVATIVE']
+      - name: account_id
+        tests:
+          - relationships:
+              to: ref('stg_accounts')
+              field: account_id
+      - name: security_id
+        tests:
+          - relationships:
+              to: ref('stg_securities')
+              field: security_id

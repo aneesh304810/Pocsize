@@ -1,0 +1,40 @@
+# profiles.yml — place in ~/.dbt/ or mount into the Airflow worker pod at
+# /home/airflow/.dbt/profiles.yml. Credentials come from env vars so we never
+# bake secrets into images (Nexus scanning enforces this).
+
+swp_sizing_poc:
+  target: dev
+  outputs:
+    dev:
+      type: oracle
+      user:     "{{ env_var('ORACLE_USER') }}"
+      password: "{{ env_var('ORACLE_PASSWORD') }}"
+      protocol: tcps
+      host:     "{{ env_var('ORACLE_HOST') }}"
+      port:     "{{ env_var('ORACLE_PORT') | as_number }}"
+      service:  "{{ env_var('ORACLE_SERVICE') }}"
+      # DRCP ("POOLED") — dev/sizing runs should pool, saves ~40% PGA
+      # vs. DEDICATED server processes at 2M-row scale.
+      server:   "POOLED"
+      threads:  4            # matches dbt-oracle recommendation; each thread = 1 Oracle session
+      retry_count:     3
+      retry_delay:     5
+      session_parameters:
+        NLS_DATE_FORMAT:      'YYYY-MM-DD'
+        NLS_TIMESTAMP_FORMAT: 'YYYY-MM-DD HH24:MI:SS'
+
+    # Larger sizing target — bump threads to measure scaling.
+    # The sizing DAG re-points dbt at this profile for the 8-thread run.
+    sizing_high:
+      type: oracle
+      user:     "{{ env_var('ORACLE_USER') }}"
+      password: "{{ env_var('ORACLE_PASSWORD') }}"
+      protocol: tcps
+      host:     "{{ env_var('ORACLE_HOST') }}"
+      port:     "{{ env_var('ORACLE_PORT') | as_number }}"
+      service:  "{{ env_var('ORACLE_SERVICE') }}"
+      server:   "POOLED"
+      threads:  8
+      session_parameters:
+        NLS_DATE_FORMAT:      'YYYY-MM-DD'
+        NLS_TIMESTAMP_FORMAT: 'YYYY-MM-DD HH24:MI:SS'
