@@ -76,11 +76,20 @@ class Api360Connector(BaseConnector):
 
         pm_root = Path(self.postman_root) if self.postman_root else None
         if pm_root and pm_root.exists():
-            for pm_path in sorted(pm_root.rglob("*.postman_collection.json")):
-                try:
-                    self._parse_postman(pm_path, flows, flow_steps)
-                except Exception as e:
-                    log.warning("api360: failed to parse postman %s: %s", pm_path.name, e)
+            # accept *.postman_collection.json (Postman export default) and
+            # *.postman.json (common shortened convention). Skip helper files
+            # like _catalog_metadata.json and anything starting with '_'.
+            seen = set()
+            for pat in ("*.postman_collection.json", "*.postman.json"):
+                for pm_path in sorted(pm_root.rglob(pat)):
+                    if pm_path.name.startswith("_") or pm_path in seen:
+                        continue
+                    seen.add(pm_path)
+                    try:
+                        self._parse_postman(pm_path, flows, flow_steps)
+                    except Exception as e:
+                        log.warning("api360: failed to parse postman %s: %s",
+                                    pm_path.name, e)
 
         log.info("api360: %d sources, %d endpoints, %d fields, %d errors, %d flows",
                  len(sources), len(endpoints), len(fields), len(errors), len(flows))
@@ -213,7 +222,7 @@ class Api360Connector(BaseConnector):
 
         requests = walk(coll.get("item", []), [])
         flows.append({
-            "flow_key": flow_key, "flow_name": flow_key,
+            "flow_key": flow_key[:256], "flow_name": flow_key[:256],
             "project_id": project_id,
             "description": (info.get("description") or "")[:2000],
             "step_count": len(requests),
@@ -231,10 +240,10 @@ class Api360Connector(BaseConnector):
                 if vm:
                     var = vm.group(1); break
             flow_steps.append({
-                "flow_key": flow_key, "step_order": i,
-                "label": req.get("name", f"Step {i}"),
-                "endpoint_key": f"{method} {raw}",
-                "variable_passed": var,
+                "flow_key": flow_key[:256], "step_order": i,
+                "label": (req.get("name") or f"Step {i}")[:256],
+                "endpoint_key": f"{method} {raw}"[:520],
+                "variable_passed": (var or "")[:256] or None,
             })
 
     # ---- load --------------------------------------------------------
