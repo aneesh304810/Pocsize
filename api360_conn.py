@@ -60,7 +60,7 @@ class Api360Connector(BaseConnector):
     # ---- parse -------------------------------------------------------
     def parse(self) -> dict[str, Any]:
         sources, endpoints, fields, errors = [], [], [], []
-        flows, flow_steps = [], []
+        flows, flow_steps, deps = [], [], []
 
         spec_root = Path(self.api_spec_root)
         if spec_root.exists():
@@ -86,15 +86,23 @@ class Api360Connector(BaseConnector):
                         continue
                     seen.add(pm_path)
                     try:
-                        self._parse_postman(pm_path, flows, flow_steps)
+                        self._parse_postman(pm_path, flows, flow_steps, deps)
                     except Exception as e:
                         log.warning("api360: failed to parse postman %s: %s",
                                     pm_path.name, e)
 
         log.info("api360: %d sources, %d endpoints, %d fields, %d errors, %d flows",
                  len(sources), len(endpoints), len(fields), len(errors), len(flows))
+        # dedupe dependency edges
+        seen_d = set(); uniq_deps = []
+        for d in deps:
+            k = (d["from_endpoint"], d["to_endpoint"])
+            if k not in seen_d:
+                seen_d.add(k); uniq_deps.append(d)
+        log.info("api360: %d dependency edges", len(uniq_deps))
         return {"sources": sources, "endpoints": endpoints, "fields": fields,
-                "errors": errors, "flows": flows, "flow_steps": flow_steps}
+                "errors": errors, "flows": flows, "flow_steps": flow_steps,
+                "dependencies": uniq_deps}
 
     def _parse_spec(self, path: Path, sources, endpoints, fields, errors) -> None:
         spec = _load(path)
@@ -206,7 +214,7 @@ class Api360Connector(BaseConnector):
                     "error_details": m.group(4).strip(),
                 })
 
-    def _parse_postman(self, path: Path, flows, flow_steps) -> None:
+    def _parse_postman(self, path: Path, flows, flow_steps, deps=None) -> None:
         coll = json.loads(path.read_text(encoding="utf-8", errors="replace"))
         info = coll.get("info", {})
         flow_key = info.get("name", path.stem)
@@ -227,11 +235,16 @@ class Api360Connector(BaseConnector):
             "description": (info.get("description") or "")[:2000],
             "step_count": len(requests),
         })
+        # track which endpoint set each variable, to derive dependencies
+        var_setter = {}        # var_name -> endpoint_key that produced it
+        step_endpoints = []    # ordered endpoint_keys for this flow
         for i, req in enumerate(requests, start=1):
             r = req.get("request", {})
             method = r.get("method", "GET")
             url = r.get("url", {})
             raw = url.get("raw") if isinstance(url, dict) else url
+            endpoint_key = f"{method} {raw}"[:520]
+            step_endpoints.append(endpoint_key)
             # capture a variable saved by test scripts (e.g. pm.collectionVariables.set)
             var = None
             for ev in req.get("event", []):
@@ -239,6 +252,18 @@ class Api360Connector(BaseConnector):
                 vm = re.search(r"\.set\(['\"]([^'\"]+)['\"]", src)
                 if vm:
                     var = vm.group(1); break
+            # dependency: if this request's URL uses {{var}} set by an earlier one
+            if deps is not None and raw:
+                for used in re.findall(r"\{\{([^}]+)\}\}", str(raw)):
+                    src_ep = var_setter.get(used)
+                    if src_ep and src_ep != endpoint_key:
+                        deps.append({
+                            "from_endpoint": endpoint_key[:520],
+                            "to_endpoint": src_ep[:520],
+                            "dep_type": "uses",
+                        })
+            if var:
+                var_setter[var] = endpoint_key
             flow_steps.append({
                 "flow_key": flow_key[:256], "step_order": i,
                 "label": (req.get("name") or f"Step {i}")[:256],
@@ -262,4 +287,7 @@ class Api360Connector(BaseConnector):
             loader._merge("api_flows", ("flow_key",), fl)
         for st in bundle["flow_steps"]:
             loader._merge("api_flow_steps", ("flow_key", "step_order"), st)
+        for d in bundle.get("dependencies", []):
+            loader._merge("api_dependencies",
+                          ("from_endpoint", "to_endpoint"), d)
         loader.commit()
